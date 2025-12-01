@@ -1,93 +1,61 @@
-// App.jsx (merged)
-// Base: your App.jsx with added "Enhancer" tab + AiVideoEnhancer import
+// src/App.jsx
 import React, { useState } from "react";
-import TabLayout from "./components/TabLayout";
+import Header from "./components/Header";
 import AiTools from "./components/AiTools";
-import AiVideoEnhancer from "./components/AiVideoEnhancer"; // <--- ensure this file exists
+import AiVideoEnhancer from "./components/AiVideoEnhancer";
 import "./index.css";
 
 const TABS = [
   { id: "downloader", label: "Video Downloader" },
   { id: "ai", label: "AI Music Tool" },
-  { id: "enhancer", label: "AI Video Enhancer" }, // Added enhancer tab
+  { id: "enhancer", label: "AI Video Enhancer" },
 ];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("downloader");
 
-  // Dynamic header/title helpers
-  const getHeaderTitle = () => {
-    if (activeTab === "downloader") return "Downloader";
-    if (activeTab === "ai") return "Media Studio";
-    if (activeTab === "enhancer") return "Video Enhancer";
-    return "Media Studio";
-  };
-
-  const getSubtitle = () => {
-    if (activeTab === "downloader") return "Download video & audio in the quality you want.";
-    if (activeTab === "ai") return "Generate creative AI-style music variations from any audio.";
-    if (activeTab === "enhancer") return "Upscale and enhance videos using AI technology.";
-    return "";
-  };
-
   return (
-    <div className="container">
-      {/* HEADER */}
-      <header className="header" role="banner">
-        <div className="logo">D</div>
-
-        <div>
-          <div className="title">
-            {getHeaderTitle()}
-          </div>
-          <div className="subtitle">
-            {getSubtitle()}
-          </div>
-        </div>
-      </header>
-
-      {/* PRIMARY NAVIGATION (TABS) */}
-      <nav
-        className="nav-tabs"
-        aria-label="Main sections"
-      >
-        {TABS.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
+    <div style={{ minHeight: "100vh", background: "#071021", color: "#e6eef8", padding: 24, fontFamily: "Inter, system-ui, sans-serif" }}>
+      <Header title="Media Studio" subtitle="Downloader • AI Music • Video Enhancer" />
+      <div style={{ maxWidth: 1100, margin: "20px auto 40px", display: "grid", gridTemplateColumns: "1fr", gap: 18 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {TABS.map((t) => (
             <button
-              key={tab.id}
-              type="button"
-              className={`nav-tab ${isActive ? "nav-tab--active" : ""}`}
-              aria-pressed={isActive}
-              onClick={() => setActiveTab(tab.id)}
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                border: "none",
+                cursor: "pointer",
+                background: activeTab === t.id ? "linear-gradient(90deg,#3b82f6,#8b5cf6)" : "rgba(255,255,255,0.03)",
+                color: activeTab === t.id ? "white" : "#9aa6b8",
+                fontWeight: 700,
+                boxShadow: activeTab === t.id ? "0 8px 24px rgba(59,130,246,0.12)" : "none",
+              }}
             >
-              {tab.label}
+              {t.label}
             </button>
-          );
-        })}
-      </nav>
+          ))}
+        </div>
 
-      {/* MAIN CONTENT */}
-      <main>
-        <section
-          className="card"
-          aria-labelledby="section-heading"
-        >
-          <h2
-            id="section-heading"
-            style={{ margin: 0, marginBottom: 12 }}
-          >
-            {activeTab === "downloader" && "Fetch"}
-            {activeTab === "ai" && "AI Music Lab"}
-            {activeTab === "enhancer" && "Enhance Video"}
-          </h2>
+        <div style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))", borderRadius: 16, padding: 20 }}>
+          {activeTab === "downloader" && (
+            <div style={{ padding: 20 }}>
+              <h2 style={{ margin: 0 }}>Fetch</h2>
+              <p style={{ color: "#9aa6b8" }}>Paste link (YouTube, Instagram, Imgur)...</p>
+              <div style={{ display: "flex", gap: 12 }}>
+                <input placeholder="Paste link (YouTube, Instagram, Imgur)..." style={{ flex: 1, padding: 12, borderRadius: 10, background: "#0b1220", border: "1px solid rgba(255,255,255,0.03)", color: "white" }} />
+                <button style={{ padding: "10px 18px", background: "#3b82f6", color: "white", borderRadius: 10, border: "none" }}>Download</button>
+              </div>
+            </div>
+          )}
 
-          {/* Component switcher */}
-          {activeTab === "downloader" && <TabLayout />}
           {activeTab === "ai" && <AiTools />}
+
           {activeTab === "enhancer" && <AiVideoEnhancer />}
-        </section>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

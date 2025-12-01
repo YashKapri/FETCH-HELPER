@@ -1,130 +1,135 @@
-import React, { useState } from "react";
-import { FaMagic, FaUpload, FaSpinner, FaDownload, FaVideo } from "react-icons/fa";
+// src/components/AiVideoEnhancer.jsx
+import React, { useRef, useState, useEffect } from "react";
+import { Canvas } from "@react-three/fiber";
+import { Html, OrbitControls, Stars } from "@react-three/drei";
+import { motion } from "framer-motion";
+import { FaCloudUploadAlt, FaUpload, FaSpinner, FaDownload } from "react-icons/fa";
+import AiCore3D from "./AiCore3D";
+
+/**
+ * AiVideoEnhancer: visually rich enhancer using a small three.js canvas background,
+ * drag/drop, simulated progress, and final download blob handling.
+ *
+ * If your backend uses /api prefix, update the fetch path.
+ */
 
 export default function AiVideoEnhancer() {
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [file, setFile] = useState(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
-  const [enhancedVideoUrl, setEnhancedVideoUrl] = useState(null);
-  const [errorMsg, setErrorMsg] = useState(null);
+  const [resultUrl, setResultUrl] = useState(null);
+  const [progress, setProgress] = useState(0);
+  const fileRef = useRef();
 
-  const handleEnhance = async () => {
-    if (!selectedFile) return alert("Please select a video file first.");
-    
+  useEffect(() => {
+    let t;
+    if (isEnhancing) {
+      setProgress(6);
+      t = setInterval(() => {
+        setProgress((p) => Math.min(98, p + Math.random() * 12));
+      }, 800);
+    } else {
+      setProgress(0);
+    }
+    return () => clearInterval(t);
+  }, [isEnhancing]);
+
+  useEffect(() => {
+    return () => {
+      if (resultUrl) {
+        try { URL.revokeObjectURL(resultUrl); } catch (e) {}
+      }
+    };
+  }, [resultUrl]);
+
+  async function handleEnhance() {
+    if (!file) return alert("Choose a video file first.");
     setIsEnhancing(true);
-    setEnhancedVideoUrl(null);
-    setErrorMsg(null);
-    
-    const formData = new FormData();
-    formData.append("file", selectedFile);
+    setResultUrl(null);
 
     try {
-        // Call your backend endpoint (which forwards to Colab)
-        const response = await fetch("/api/enhance-video", {
-            method: "POST",
-            body: formData,
-        });
+      const fd = new FormData();
+      fd.append("file", file);
 
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({ detail: "Enhancement failed" }));
-            throw new Error(err.detail || "Enhancement failed");
-        }
+      // If backend is async, you should implement job/poll flow — this is immediate attempt
+      const res = await fetch("/api/enhance-video", { method: "POST", body: fd });
+      if (!res.ok) {
+        const ct = res.headers.get("content-type") || "";
+        const b = ct.includes("application/json") ? await res.json() : await res.text();
+        throw new Error(typeof b === "object" ? b.detail || JSON.stringify(b) : String(b || "Enhance failed"));
+      }
+      const blob = await res.blob();
 
-        // Create a blob URL to play/download the result
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        setEnhancedVideoUrl(url);
-        
+      // Fake finishing progress for smooth UX
+      setProgress(100);
+      await new Promise((r) => setTimeout(r, 500));
+
+      const url = URL.createObjectURL(blob);
+      setResultUrl(url);
     } catch (err) {
-        setErrorMsg(err.message);
+      alert("Enhancer error: " + (err.message || err));
     } finally {
-        setIsEnhancing(false);
+      setIsEnhancing(false);
     }
-  };
+  }
 
   return (
-    <div style={{ padding: "10px" }}>
-      <h2 style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20 }}>
-        <FaVideo style={{ color: "#10b981" }} /> AI Video Enhancer
-      </h2>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, alignItems: "start" }}>
+      <div style={{ position: "relative", height: 260, borderRadius: 16, overflow: "hidden", background: "linear-gradient(180deg,#041021,#071827)" }}>
+        <Canvas style={{ position: "absolute", inset: 0 }} camera={{ position: [0, 0, 4] }}>
+          <ambientLight intensity={0.5} />
+          <directionalLight position={[2, 5, 2]} intensity={1} />
+          <AiCore3D active={isEnhancing} />
+          <Stars radius={50} depth={40} count={500} factor={4} saturation={0} fade speed={1} />
+          <OrbitControls enableZoom={false} enablePan={false} autoRotate autoRotateSpeed={isEnhancing ? 1.2 : 0.2} />
+        </Canvas>
 
-      {/* UPLOAD AREA */}
-      <div style={{ 
-        border: "2px dashed #374151", padding: 30, borderRadius: 12, 
-        textAlign: "center", marginBottom: 20, background: "#1f2937" 
-      }}>
-        <div style={{ color: "#9ca3af", marginBottom: 15 }}>
-            <FaMagic size={40} style={{ color: "#10b981", marginBottom: 10 }} />
-            <p>Upload low-res video to upscale to 4K (Real-ESRGAN)</p>
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+          <div style={{ pointerEvents: "auto", background: "rgba(2,6,23,0.55)", borderRadius: 12, padding: 18, width: "86%", textAlign: "center", color: "white" }}>
+            <h3 style={{ margin: 0 }}>AI Video Enhancer</h3>
+            <p style={{ margin: "8px 0 0", color: "#9aa6b8" }}>Upscale footage using cloud GPU (simulate Real-ESRGAN).</p>
+          </div>
         </div>
-
-        <input 
-            type="file" 
-            accept="video/*" 
-            id="video-upload"
-            style={{ display: "none" }}
-            onChange={(e) => setSelectedFile(e.target.files[0])}
-        />
-        
-        {selectedFile ? (
-            <div style={{ color: "#10b981", fontWeight: "bold" }}>
-                Selected: {selectedFile.name}
-            </div>
-        ) : (
-            <label 
-                htmlFor="video-upload" 
-                style={{ 
-                    padding: "10px 20px", background: "#374151", color: "white", 
-                    borderRadius: 8, cursor: "pointer", display: "inline-block"
-                }}
-            >
-                Choose Video File
-            </label>
-        )}
       </div>
 
-      {/* ENHANCE BUTTON */}
-      <button 
-        onClick={handleEnhance}
-        disabled={isEnhancing || !selectedFile}
-        style={{ 
-            width: "100%", padding: "14px", background: isEnhancing ? "#064e3b" : "#10b981", 
-            color: "white", fontWeight: "bold", border: "none", borderRadius: "8px", 
-            cursor: isEnhancing ? "wait" : "pointer", fontSize: "16px",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
-        }}
-      >
-        {isEnhancing ? <><FaSpinner className="spin" /> Processing on Cloud GPU...</> : <><FaUpload /> Enhance Video</>}
-      </button>
+      <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} style={{ display: "flex", gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <label htmlFor="vfile" style={{ display: "block", cursor: "pointer" }}>
+            <input id="vfile" type="file" accept="video/*" style={{ display: "none" }} ref={fileRef} onChange={(e) => setFile(e.target.files && e.target.files[0])} />
+            <div style={{ padding: 18, borderRadius: 12, border: "1px dashed rgba(255,255,255,0.04)", background: "#07121a", textAlign: "center" }}>
+              <FaCloudUploadAlt size={28} style={{ marginBottom: 6 }} />
+              <div style={{ color: file ? "#a7f3d0" : "#9aa6b8", fontWeight: 700 }}>{file ? file.name : "Click to choose or drag & drop a video"}</div>
+              <div style={{ color: "#7f8a93", marginTop: 8, fontSize: 13 }}>Accepts mp4, mov — try a short clip (recommended)</div>
+            </div>
+          </label>
 
-      {/* ERROR MESSAGE */}
-      {errorMsg && (
-        <div style={{ 
-            marginTop: 20, padding: 15, background: "rgba(239, 68, 68, 0.1)", 
-            border: "1px solid #ef4444", borderRadius: 8, color: "#f87171" 
-        }}>
-            Error: {errorMsg}
-        </div>
-      )}
+          <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+            <button onClick={handleEnhance} disabled={isEnhancing || !file} style={{ flex: 1, padding: 12, background: file ? "#06b6d4" : "#334155", color: "white", borderRadius: 10, border: "none", fontWeight: 700 }}>
+              {isEnhancing ? <><FaSpinner style={{ marginRight: 8, animation: "spin 1s linear infinite" }} /> Enhancing...</> : <><FaUpload style={{ marginRight: 8 }} /> Enhance</>}
+            </button>
+            {resultUrl && <a href={resultUrl} download={`enhanced_${file?.name || "video.mp4"}`} style={{ padding: 12, background: "#10b981", color: "white", borderRadius: 10, textDecoration: "none", fontWeight: 700 }}><FaDownload /> Download</a>}
+          </div>
 
-      {/* RESULT PREVIEW */}
-      {enhancedVideoUrl && (
-        <div style={{ marginTop: 30, background: "#064e3b", padding: 20, borderRadius: 12, border: "1px solid #10b981" }}>
-            <h3 style={{ color: "white", marginTop: 0 }}>✨ Enhanced Result</h3>
-            <video controls src={enhancedVideoUrl} style={{ width: "100%", borderRadius: 8, marginBottom: 15 }} />
-            
-            <a 
-                href={enhancedVideoUrl} 
-                download={`enhanced_${selectedFile?.name || "video.mp4"}`}
-                style={{ 
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
-                    padding: "12px", background: "#10b981", color: "white", textDecoration: "none", 
-                    borderRadius: 8, fontWeight: "bold"
-                }}
-            >
-                <FaDownload /> Download Enhanced Video
-            </a>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ height: 10, background: "#07121a", borderRadius: 999, overflow: "hidden", border: "1px solid rgba(255,255,255,0.02)" }}>
+              <div style={{ width: `${progress}%`, height: "100%", background: "linear-gradient(90deg,#06b6d4,#6366f1)", transition: "width 0.5s ease" }} />
+            </div>
+            <div style={{ color: "#9aa6b8", marginTop: 6, fontSize: 13 }}>{isEnhancing ? `Processing ${Math.round(progress)}%` : (resultUrl ? "Complete" : "Idle")}</div>
+          </div>
         </div>
-      )}
+
+        <div style={{ width: 320 }}>
+          <div style={{ padding: 12, borderRadius: 12, background: "#071827", border: "1px solid rgba(255,255,255,0.02)" }}>
+            <h4 style={{ margin: "0 0 6px 0" }}>Preview</h4>
+            {resultUrl ? (
+              <video controls src={resultUrl} style={{ width: "100%", borderRadius: 8 }} />
+            ) : (
+              <div style={{ height: 160, borderRadius: 8, background: "#04121a", display: "grid", placeItems: "center", color: "#9aa6b8" }}>
+                <div><FaUpload /> &nbsp; No result yet</div>
+              </div>
+            )}
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
