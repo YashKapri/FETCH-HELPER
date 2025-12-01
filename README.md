@@ -1,56 +1,60 @@
-# 🎬Fetch helper
+# Fetch Helper – Media Studio
 
-**Media Studio** is a powerful, full-stack web application that combines a universal video downloader with an AI-powered music generation tool. It allows users to fetch, preview, and download media from major platforms (YouTube, Instagram, TikTok, etc.) and transform audio tracks into copyright-free variations using digital signal processing.
-
-✨ Features
-
-### 📥 Video Downloader
-* **Universal Support:** Downloads videos and audio from YouTube, Instagram, TikTok, Facebook, Twitter (X), Imgur, and more.
-* **Smart Detection:** Automatically detects content types (Shorts, Reels, Clips) and cleans URLs (e.g., removing playlist parameters).
-* **Inline Player:** Watch videos directly in the app before downloading.
-    * *YouTube:* Uses official embedded player.
-    * *Others:* Uses a secure backend proxy to stream content, bypassing hotlink protections.
-* **Quality Selection:** Auto-selects the best available video/audio quality (up to 4K).
-* **Robust Fetching:** Includes a smart fallback system to handle YouTube cookies and age-restricted content automatically.
-
-### 🎵 AI Music Lab
-* **Generate Variations:** Upload an MP3 or paste a song URL to instantly generate 5 unique "Copyright-Free" style variations:
-    * 🧘 **Lo-Fi Slow:** Chill, relaxed, and slowed down.
-    * ⚡ **Nightcore:** Fast, energetic, and pitch-shifted.
-    * 🔊 **Bass Boosted:** Heavy bass for club vibes.
-    * 🌌 **Ethereal:** Spacious reverb and echo effects.
-    * 🕹️ **8-Bit Retro:** Crunchy, old-school arcade sound.
-* **Instant Preview:** Validates song URLs and displays metadata before processing.
-* **Audio Processing:** Powered by **FFmpeg** DSP filters on the backend.
+Media Studio is a full-stack application that combines a universal video downloader, an AI music generator, and an AI video enhancer. It lets users fetch, preview, and download media from major platforms (YouTube, Instagram, TikTok, etc.) and generate copyright-free music using URL input, file upload, or text prompts.
 
 ---
 
-## 🛠️ Tech Stack
+## Features
 
-### **Frontend**
-* **React (Vite):** Fast, modern UI framework.
-* **React Icons:** For a clean, professional look.
-* **CSS:** Custom dark-mode styling.
+### 1. Video Downloader
+- Supports YouTube, TikTok, Instagram, Reddit, and more.
+- Extracts metadata, thumbnails, and available formats.
+- Downloads audio, video, or both.
+- Uses FastAPI + yt-dlp for fast and stable performance.
 
-### **Backend**
-* **FastAPI (Python):** High-performance API framework.
-* **yt-dlp:** The engine behind video extraction and metadata fetching.
-* **FFmpeg:** The core processor for merging formats and generating audio effects.
-* **Requests:** Handles proxy streaming for images and videos.
+### 2. AI Music Lab
+The AI Music Lab has three modes:
+
+#### • Remix URL  
+Generate copyright-free music variations from any YouTube/SoundCloud link.
+
+#### • Upload File  
+Upload an audio or video file and generate brand new AI variations.
+
+#### • Text-to-Music  
+Describe music in natural language and the system generates a full track using AI.
+
+### 3. AI Video Enhancer
+- Upload low-quality footage and upscale it to 1080p or 4K.
+- Based on Real-ESRGAN (GPU-accelerated).
+- Backend supports forwarding requests to external GPU services like Colab.
+
+### 4. Modern Animated UI
+- Built with React + Vite.
+- Animated using Framer Motion.
+- Optional 3D elements powered by React Three Fiber.
+- Smooth transitions, modern dark theme, responsive layout.
 
 ---
 
-## 🚀 Installation & Setup
+## Tech Stack
 
-### Prerequisites
-1.  **Node.js** (v16+) installed.
-2.  **Python** (v3.8+) installed.
-3.  **FFmpeg** installed and added to your system PATH.
-    * *Windows:* [Download & Install Guide](https://www.gyan.dev/ffmpeg/builds/)
-    * *Linux:* `sudo apt install ffmpeg`
-    * *Mac:* `brew install ffmpeg`
+### Frontend
+- React (Vite)
+- Framer Motion (animations)
+- React Three Fiber (optional 3D)
+- TailwindCSS / Custom CSS
+- React Icons
 
-### 1. Clone the Repository
-```bash
-git clone [https://github.com/yourusername/media-studio.git](https://github.com/yourusername/media-studio.git)
-cd media-studio
+### Backend
+- FastAPI (Python)
+- yt-dlp
+- Real-ESRGAN (for video enhancement)
+- Custom audio pipelines
+- Optional remote GPU processing
+
+---
+
+## API Endpoints
+
+### Media Info
