@@ -1,5 +1,6 @@
-# media_studio.py
+# media_studio.py (complete, ready-to-paste)
 import logging
+import traceback
 import tempfile
 import subprocess
 import sys
@@ -17,10 +18,14 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from yt_dlp import YoutubeDL
-from yt_dlp.utils import UnsupportedError
+from yt_dlp.utils import DownloadError, UnsupportedError
 
-# local helper: select_formats must be present in .utils
 from .utils import select_formats
+
+# ---------- CONFIG ----------
+# Replace this with your Colab/ngrok URL when you want remote GPU processing.
+# Example: COLAB_GPU_URL = "https://a1b2-34-56.ngrok-free.app"
+COLAB_GPU_URL = "https://REPLACE-WITH-YOUR-NGROK-URL.ngrok-free.app"
 
 LOG = logging.getLogger("media_studio")
 LOG.setLevel(logging.INFO)
@@ -30,7 +35,13 @@ app = FastAPI(title="Media Studio (Merged)")
 # Allow CORS during dev; narrow origins in production
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000"],  # adjust as needed
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:8000",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,6 +65,7 @@ def _register_tmpfile(download_id: str, path: str):
 
 
 def _cleanup_registry(download_id: str):
+    """Kill any running procs and remove tmp files/dirs registered for the given id."""
     with PROCESS_REGISTRY_LOCK:
         entry = PROCESS_REGISTRY.pop(download_id, None)
     if not entry:
@@ -106,7 +118,7 @@ def _kill_processes(download_id: str):
     return killed
 
 
-# ---------- MODELS ----------
+# ---------- MODELS & HELPERS ----------
 class DownloadRequest(BaseModel):
     url: str
     mode: str
@@ -114,9 +126,11 @@ class DownloadRequest(BaseModel):
     download_id: Optional[str] = None
 
 
-# ---------- HELPERS ----------
 def _clean_url(url: str) -> str:
-    """Safely remove youtube playlist/mix params while leaving other URLs intact."""
+    """
+    Remove playlist/mix/index parameters for YouTube-like links to force single-video behavior.
+    Keeps other URLs untouched.
+    """
     try:
         if not url:
             return url
@@ -132,6 +146,9 @@ def _clean_url(url: str) -> str:
 
 
 def _extract_info_with_cookie_fallback(ydl_opts: dict, url: str):
+    """
+    Extract info using yt_dlp; if chrome cookie DB is locked, retry without cookies.
+    """
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -273,6 +290,7 @@ def proxy_image_endpoint(url: str):
         return Response(status_code=404)
 
 
+# ---------- AI MUSIC (local FFmpeg-based variations) ----------
 @app.post("/generate-music")
 async def generate_music(
     url: Optional[str] = Form(None),
@@ -357,3 +375,84 @@ async def stream_generated(job_id: str, var_id: str):
     if path.exists():
         return FileResponse(path, media_type="audio/mpeg", filename=f"{var_id}.mp3")
     return Response(status_code=404)
+
+
+# ---------- VIDEO ENHANCER (remote-forwarding with local fallback) ----------
+def _local_upscale(input_p: str, output_p: str, job_id: str):
+    """
+    Local fallback: apply sharpening + scale (FFmpeg).
+    Blocking call (keeps behavior simple).
+    """
+    filter_cmd = "unsharp=5:5:1.0:5:5:0.0,scale=1920:-2"
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", input_p,
+        "-vf", filter_cmd,
+        "-c:v", "libx264", "-preset", "fast", "-crf", "23",
+        "-c:a", "copy",
+        output_p
+    ]
+    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    _register_process(job_id, process)
+    stdout, stderr = process.communicate()
+    if process.returncode != 0:
+        raise RuntimeError(f"FFmpeg failed: {stderr.decode(errors='ignore')[:200]}")
+
+
+@app.post("/enhance-video")
+async def enhance_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """
+    Attempts to forward the uploaded file to remote COLAB_GPU_URL (if configured).
+    If remote is not configured or fails, falls back to a local FFmpeg-based enhancer.
+    """
+    job_id = f"enhance_{uuid.uuid4().hex}"
+    tmpdir = Path(tempfile.gettempdir()) / "fetch_helper_ai"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+
+    input_path = tmpdir / f"{job_id}_input.mp4"
+    output_path = tmpdir / f"{job_id}_enhanced.mp4"
+
+    # Save upload locally
+    try:
+        with open(input_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        _register_tmpfile(job_id, str(input_path))
+    except Exception as e:
+        LOG.exception("Failed saving uploaded file")
+        raise HTTPException(status_code=500, detail=f"Failed to save upload: {e}")
+
+    # If COLAB_GPU_URL is configured (looks like an http(s) URL), try forwarding
+    if isinstance(globals().get("COLAB_GPU_URL"), str) and COLAB_GPU_URL.strip() and COLAB_GPU_URL.startswith("http"):
+        remote_url = COLAB_GPU_URL.rstrip("/") + "/enhance-video-ai"
+        LOG.info("Forwarding enhancement job %s to remote GPU at %s", job_id, remote_url)
+        try:
+            with open(input_path, "rb") as f:
+                resp = requests.post(remote_url, files={"file": f}, timeout=600)
+        except requests.exceptions.RequestException as e:
+            LOG.warning("Remote Colab unreachable: %s — falling back to local processing", e)
+            resp = None
+
+        if resp and resp.status_code == 200:
+            try:
+                with open(output_path, "wb") as out:
+                    out.write(resp.content)
+                _register_tmpfile(job_id, str(output_path))
+                background_tasks.add_task(_cleanup_registry, job_id)
+                return FileResponse(output_path, filename=f"enhanced_{file.filename}", media_type="video/mp4")
+            except Exception as e:
+                LOG.exception("Failed to write remote response")
+                _cleanup_registry(job_id)
+                raise HTTPException(status_code=500, detail=f"Failed to save remote enhanced file: {e}")
+        else:
+            LOG.info("Remote enhancement failed or returned non-200; falling back to local.")
+
+    # Local fallback
+    try:
+        _local_upscale(str(input_path), str(output_path), job_id)
+        _register_tmpfile(job_id, str(output_path))
+        background_tasks.add_task(_cleanup_registry, job_id)
+        return FileResponse(output_path, filename=f"enhanced_{file.filename}", media_type="video/mp4")
+    except Exception as e:
+        LOG.exception("Enhancement Error")
+        _cleanup_registry(job_id)
+        raise HTTPException(status_code=500, detail=f"Enhancement failed: {str(e)}")

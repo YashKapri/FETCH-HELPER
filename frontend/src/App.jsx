@@ -1,17 +1,34 @@
+// App.jsx (merged)
+// Base: your App.jsx with added "Enhancer" tab + AiVideoEnhancer import
 import React, { useState } from "react";
 import TabLayout from "./components/TabLayout";
 import AiTools from "./components/AiTools";
+import AiVideoEnhancer from "./components/AiVideoEnhancer"; // <--- ensure this file exists
 import "./index.css";
 
 const TABS = [
   { id: "downloader", label: "Video Downloader" },
   { id: "ai", label: "AI Music Tool" },
+  { id: "enhancer", label: "AI Video Enhancer" }, // Added enhancer tab
 ];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("downloader");
 
-  const isDownloader = activeTab === "downloader";
+  // Dynamic header/title helpers
+  const getHeaderTitle = () => {
+    if (activeTab === "downloader") return "Downloader";
+    if (activeTab === "ai") return "Media Studio";
+    if (activeTab === "enhancer") return "Video Enhancer";
+    return "Media Studio";
+  };
+
+  const getSubtitle = () => {
+    if (activeTab === "downloader") return "Download video & audio in the quality you want.";
+    if (activeTab === "ai") return "Generate creative AI-style music variations from any audio.";
+    if (activeTab === "enhancer") return "Upscale and enhance videos using AI technology.";
+    return "";
+  };
 
   return (
     <div className="container">
@@ -21,12 +38,10 @@ export default function App() {
 
         <div>
           <div className="title">
-            {isDownloader ? "Downloader" : "Media Studio"}
+            {getHeaderTitle()}
           </div>
           <div className="subtitle">
-            {isDownloader
-              ? "Download video & audio in the quality you want."
-              : "Generate creative AI-style music variations from any audio."}
+            {getSubtitle()}
           </div>
         </div>
       </header>
@@ -56,16 +71,21 @@ export default function App() {
       <main>
         <section
           className="card"
-          aria-labelledby="downloader-heading"
+          aria-labelledby="section-heading"
         >
           <h2
-            id="downloader-heading"
+            id="section-heading"
             style={{ margin: 0, marginBottom: 12 }}
           >
-            {isDownloader ? "Fetch" : "AI Music Lab"}
+            {activeTab === "downloader" && "Fetch"}
+            {activeTab === "ai" && "AI Music Lab"}
+            {activeTab === "enhancer" && "Enhance Video"}
           </h2>
 
-          {isDownloader ? <TabLayout /> : <AiTools />}
+          {/* Component switcher */}
+          {activeTab === "downloader" && <TabLayout />}
+          {activeTab === "ai" && <AiTools />}
+          {activeTab === "enhancer" && <AiVideoEnhancer />}
         </section>
       </main>
     </div>

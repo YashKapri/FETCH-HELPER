@@ -1,4 +1,4 @@
-# media_studio.py
+# media_studio.py (merged)
 import logging
 import traceback
 import tempfile
@@ -20,6 +20,10 @@ from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError, UnsupportedError
 
 from .utils import select_formats
+
+# --- CONFIGURATION: set your Colab/NGROK URL here when using cloud GPU features ---
+# Example: "https://a1b2-34-56.ngrok-free.app"
+COLAB_GPU_URL = "https://REPLACE-ME.ngrok-free.app"
 
 LOG = logging.getLogger("media_studio")
 LOG.setLevel(logging.INFO)
@@ -205,8 +209,89 @@ def _run_ffmpeg_filter(input_path: str, output_path: str, filter_complex: str, d
     _register_tmpfile(download_id, output_path)
 
 
-# ---------- ENDPOINTS ----------
+# ---------- NEW: Offload/Colab endpoints ----------
+@app.post("/enhance-video")
+async def enhance_video_endpoint(file: UploadFile = File(...)):
+    """Offload video enhancement to Colab/remote GPU (expects COLAB_GPU_URL to be set)."""
+    if "ngrok" not in COLAB_GPU_URL and not COLAB_GPU_URL.startswith("http"):
+        raise HTTPException(500, "Colab URL not configured in backend! Please set COLAB_GPU_URL in media_studio.py")
 
+    tmpdir = Path(tempfile.gettempdir()) / "fetch_ai_cache"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    input_path = tmpdir / f"in_{uuid.uuid4().hex}.mp4"
+    output_path = tmpdir / f"out_{uuid.uuid4().hex}.mp4"
+    job_id = f"colab_{uuid.uuid4().hex}"
+    try:
+        # Save local upload temporarily
+        with open(input_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        _register_tmpfile(job_id, str(input_path))
+
+        # Post to Colab endpoint
+        LOG.info(f"Offloading {file.filename} to Colab GPU at {COLAB_GPU_URL}...")
+        try:
+            with open(input_path, "rb") as f:
+                colab_response = requests.post(
+                    f"{COLAB_GPU_URL.rstrip('/')}/enhance-video-ai",
+                    files={"file": f},
+                    timeout=600
+                )
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(500, f"Failed to connect to Colab: {str(e)}")
+
+        if colab_response.status_code != 200:
+            raise HTTPException(500, f"Colab GPU Failed processing: {colab_response.text}")
+
+        with open(output_path, "wb") as f:
+            f.write(colab_response.content)
+        _register_tmpfile(job_id, str(output_path))
+
+        return FileResponse(output_path, filename="enhanced_video.mp4", media_type="video/mp4")
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LOG.exception("Enhance error")
+        raise HTTPException(500, str(e))
+    finally:
+        # cleanup will be handled by registry (registered files) or can be removed here
+        pass
+
+
+@app.post("/generate-music-prompt")
+async def generate_music_prompt(prompt: str = Form(...)):
+    """Forward text prompt to Colab/remote MusicGen and return audio blob (wav)."""
+    if "ngrok" not in COLAB_GPU_URL and not COLAB_GPU_URL.startswith("http"):
+        raise HTTPException(500, "Colab URL not configured! Please set COLAB_GPU_URL in media_studio.py")
+
+    tmpdir = Path(tempfile.gettempdir()) / "fetch_ai_cache"
+    tmpdir.mkdir(parents=True, exist_ok=True)
+    output_path = tmpdir / f"gen_{uuid.uuid4().hex}.wav"
+    job_id = f"gen_{uuid.uuid4().hex}"
+
+    try:
+        LOG.info("Sending MusicGen prompt to Colab: %s", (prompt[:120] + "...") if len(prompt) > 120 else prompt)
+        try:
+            resp = requests.post(f"{COLAB_GPU_URL.rstrip('/')}/generate-music-ai", data={"prompt": prompt}, timeout=300)
+        except requests.exceptions.RequestException as e:
+            raise HTTPException(500, f"Failed to connect to Colab: {str(e)}")
+
+        if resp.status_code != 200:
+            raise HTTPException(500, f"Colab MusicGen Failed: {resp.text}")
+
+        with open(output_path, "wb") as f:
+            f.write(resp.content)
+        _register_tmpfile(job_id, str(output_path))
+
+        return FileResponse(output_path, filename="ai_generated_music.wav", media_type="audio/wav")
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        LOG.exception("MusicGen error")
+        _cleanup_registry(job_id)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------- ENDPOINTS ----------
 @app.post("/info")
 async def info_endpoint(payload: dict = Body(...)):
     raw_url = (payload.get("url") or "").strip()
@@ -293,7 +378,6 @@ def proxy_video_endpoint(url: str):
 
 
 # ---------- DOWNLOAD LOGIC ----------
-
 def _safe_extract_info(ydl: YoutubeDL, url: str):
     info = ydl.extract_info(url, download=False)
     if isinstance(info, dict) and info.get("entries"):
@@ -417,12 +501,17 @@ async def cancel_download(download_id: str):
     return JSONResponse({"killed": killed})
 
 
-# ---------- AI MUSIC GENERATION ENDPOINTS ----------
+# ---------- AI MUSIC GENERATION ENDPOINTS (local FFmpeg variants kept) ----------
 @app.post("/generate-music")
 async def generate_music(
     url: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None)
 ):
+    """
+    Local remix generation (FFmpeg filters). Works as before: accepts URL or uploaded file.
+    If you want to prefer Colab-based generation for remixes, call /generate-music-prompt or
+    implement a /generate-music-remote route that forwards files to COLAB_GPU_URL.
+    """
     if not url and not file:
         raise HTTPException(status_code=400, detail="Provide a URL or File")
 

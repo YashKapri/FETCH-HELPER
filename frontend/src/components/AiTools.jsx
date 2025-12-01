@@ -1,4 +1,5 @@
-// AiTools.jsx
+// AiTools.jsx (merged)
+// Base: your original AiTools.jsx with added "Text to Music" prompt tab (Gemini)
 import React, { useEffect, useRef, useState } from "react";
 import {
   FaCloudUploadAlt,
@@ -8,14 +9,16 @@ import {
   FaDownload,
   FaCheckCircle,
   FaExclamationCircle,
+  FaKeyboard,
 } from "react-icons/fa";
 
 /**
- * AiTools (final, intact)
+ * AiTools (merged)
  *
  * Backend endpoints:
  * - POST {API_PREFIX}/info               -> { title, thumbnail, uploader, platform, id, ... }
  * - POST {API_PREFIX}/generate-music     -> form-data: url or file -> { results: [{ title, description, stream_url }, ...] }
+ * - POST {API_PREFIX}/generate-music-prompt -> form-data: prompt -> returns raw audio (wav) blob
  * - GET  {API_PREFIX}/proxy-image?url=... -> thumbnail proxy
  *
  * If your backend is mounted at /api, set API_PREFIX = "/api"
@@ -23,9 +26,13 @@ import {
 const API_PREFIX = ""; // set to "/api" if backend routes are prefixed
 
 export default function AiTools() {
-  const [mode, setMode] = useState("url"); // "url" | "file"
+  // mode: "url" | "file" | "prompt"
+  const [mode, setMode] = useState("url");
   const [url, setUrl] = useState("");
   const [file, setFile] = useState(null);
+
+  // Prompt-specific state
+  const [promptText, setPromptText] = useState("");
 
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -76,7 +83,7 @@ export default function AiTools() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [url, mode]);
 
-  // Drag & drop handlers
+  // Drag & drop handlers for file upload mode
   useEffect(() => {
     const el = dropRef.current;
     if (!el) return;
@@ -113,14 +120,11 @@ export default function AiTools() {
         body: JSON.stringify({ url: inputUrl }),
       });
 
-      // Try to parse JSON or text; backend may include detail
       const contentType = res.headers.get("content-type") || "";
       const body = contentType.includes("application/json") ? await res.json() : await res.text();
 
       if (!res.ok) {
-        // If backend returned { detail: "..."} prefer that
         let msg = typeof body === "object" && body ? body.detail || JSON.stringify(body) : String(body || "Preview not available");
-        // Clean up repeated verbose yt-dlp errors if present
         if (msg && msg.includes("ERROR:")) msg = msg.split("ERROR:").pop().trim();
         throw new Error(msg);
       }
@@ -165,39 +169,99 @@ export default function AiTools() {
     setGenError("");
   }
 
-  // Trigger generation: POST formData to backend
+  // Core generation handler (supports prompt, url, and file modes)
   async function handleGenerate() {
     setGenError("");
     setResults([]);
-    if (mode === "url" && !preview) {
-      setGenError("Wait for the preview to load before generating.");
-      return;
-    }
-    if (mode === "file" && !file) {
-      setGenError("Please select a file to upload.");
-      return;
-    }
-
     setIsGenerating(true);
+
     try {
-      const form = new FormData();
-      if (mode === "url") form.append("url", url.trim());
-      else form.append("file", file);
+      if (mode === "prompt") {
+        if (!promptText.trim()) {
+          setGenError("Please enter a text prompt.");
+          setIsGenerating(false);
+          return;
+        }
+        // Send prompt to the dedicated prompt endpoint and expect raw audio blob back
+        const form = new FormData();
+        form.append("prompt", promptText.trim());
 
-      const res = await fetch(`${API_PREFIX}/generate-music`, {
-        method: "POST",
-        body: form,
-      });
+        const res = await fetch(`${API_PREFIX}/generate-music-prompt`, {
+          method: "POST",
+          body: form,
+        });
 
-      if (!res.ok) {
-        // Prefer JSON error { detail: "..."} but accept plain text
-        const ct = res.headers.get("content-type") || "";
-        const body = ct.includes("application/json") ? await res.json() : await res.text();
-        let msg = typeof body === "object" ? body.detail || JSON.stringify(body) : String(body || "Generation failed");
-        throw new Error(msg);
+        if (!res.ok) {
+          const ct = res.headers.get("content-type") || "";
+          const body = ct.includes("application/json") ? await res.json() : await res.text();
+          let msg = typeof body === "object" ? body.detail || JSON.stringify(body) : String(body || "Generation failed");
+          throw new Error(msg);
+        }
+
+        // Receive blob (wav/mp3) and create a downloadable/streamable object URL
+        const blob = await res.blob();
+        const urlObj = URL.createObjectURL(blob);
+        const title = promptText.length > 80 ? promptText.slice(0, 80) + "…" : promptText;
+        const generatedEntry = {
+          title: `Prompt: ${title}`,
+          description: "Generated from text prompt",
+          stream_url: urlObj,
+          downloadable_blob: blob, // kept in case user wants to download directly
+          is_prompt_result: true,
+        };
+        setResults([generatedEntry]);
+        setGenError("");
+        return;
       }
-      const json = await res.json();
-      setResults(Array.isArray(json.results) ? json.results : []);
+
+      // For mode === "url" or "file", reuse existing backend generate-music endpoint
+      if (mode === "url") {
+        if (!preview) {
+          setGenError("Wait for the preview to load before generating.");
+          return;
+        }
+        const form = new FormData();
+        form.append("url", url.trim());
+
+        const res = await fetch(`${API_PREFIX}/generate-music`, {
+          method: "POST",
+          body: form,
+        });
+
+        if (!res.ok) {
+          const ct = res.headers.get("content-type") || "";
+          const body = ct.includes("application/json") ? await res.json() : await res.text();
+          let msg = typeof body === "object" ? body.detail || JSON.stringify(body) : String(body || "Generation failed");
+          throw new Error(msg);
+        }
+        const json = await res.json();
+        setResults(Array.isArray(json.results) ? json.results : []);
+        return;
+      }
+
+      if (mode === "file") {
+        if (!file) {
+          setGenError("Please select a file to upload.");
+          return;
+        }
+        const form = new FormData();
+        form.append("file", file);
+
+        const res = await fetch(`${API_PREFIX}/generate-music`, {
+          method: "POST",
+          body: form,
+        });
+
+        if (!res.ok) {
+          const ct = res.headers.get("content-type") || "";
+          const body = ct.includes("application/json") ? await res.json() : await res.text();
+          let msg = typeof body === "object" ? body.detail || JSON.stringify(body) : String(body || "Generation failed");
+          throw new Error(msg);
+        }
+        const json = await res.json();
+        setResults(Array.isArray(json.results) ? json.results : []);
+        return;
+      }
     } catch (err) {
       setGenError(err?.message || "Generation failed");
     } finally {
@@ -205,8 +269,8 @@ export default function AiTools() {
     }
   }
 
-  // Play/pause single audio instance
-  async function togglePlay(streamUrl) {
+  // Play/pause single audio instance (works for both backend stream_url and prompt blob object URLs)
+  async function togglePlay(streamUrl, downloadableBlob) {
     if (!audioRef.current) return;
     if (playingUrl === streamUrl) {
       audioRef.current.pause();
@@ -231,8 +295,31 @@ export default function AiTools() {
         <FaMagic style={{ color: "#8b5cf6" }} /> AI Music Lab
       </h2>
 
-      {/* Mode toggles */}
+      {/* Mode toggles: Prompt / URL / Upload */}
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <button
+          onClick={() => {
+            setMode("prompt");
+            setFile(null);
+            setResults([]);
+            setGenError("");
+            setPreviewError("");
+          }}
+          style={{
+            flex: 1,
+            padding: 10,
+            borderRadius: 8,
+            border: "none",
+            cursor: "pointer",
+            background: mode === "prompt" ? "#8b5cf6" : "#374151",
+            color: "white",
+            fontWeight: 700,
+          }}
+          aria-pressed={mode === "prompt"}
+        >
+          <FaKeyboard /> Text to Music
+        </button>
+
         <button
           onClick={() => {
             setMode("url");
@@ -253,7 +340,7 @@ export default function AiTools() {
           }}
           aria-pressed={mode === "url"}
         >
-          Paste URL
+          Remix URL
         </button>
 
         <button
@@ -280,9 +367,32 @@ export default function AiTools() {
         </button>
       </div>
 
-      {/* Input area */}
+      {/* INPUT AREA */}
       <div style={{ marginBottom: 16 }}>
-        {mode === "url" ? (
+        {mode === "prompt" ? (
+          <>
+            <textarea
+              value={promptText}
+              onChange={(e) => setPromptText(e.target.value)}
+              placeholder="Describe the music... (e.g. 'A sad piano melody with rain sounds', 'Cyberpunk synthwave bass')"
+              style={{
+                width: "100%",
+                padding: 12,
+                borderRadius: 8,
+                border: "1px solid #374151",
+                background: "#111827",
+                color: "white",
+                minHeight: 120,
+                resize: "vertical",
+                fontFamily: "sans-serif",
+              }}
+              aria-label="Text prompt for music generation"
+            />
+            <div style={{ color: "#9ca3af", fontSize: 12, marginTop: 8 }}>
+              Tip: Be specific (mood, instruments, tempo, era). Short prompts work too.
+            </div>
+          </>
+        ) : mode === "url" ? (
           <>
             <input
               placeholder="Paste YouTube, SoundCloud, or Instagram link..."
@@ -302,9 +412,7 @@ export default function AiTools() {
               }}
             />
 
-            {previewLoading && (
-              <div style={{ color: "#9ca3af", marginTop: 10, fontStyle: "italic" }}>Finding song…</div>
-            )}
+            {previewLoading && <div style={{ color: "#9ca3af", marginTop: 10, fontStyle: "italic" }}>Finding song…</div>}
 
             {previewError && !previewLoading && (
               <div
@@ -353,9 +461,7 @@ export default function AiTools() {
                     Target Audio Source
                   </div>
                   <div style={{ color: "white", fontWeight: 700, marginTop: 6 }}>{preview.title}</div>
-                  <div style={{ color: "#9ca3af", marginTop: 4 }}>
-                    {preview.uploader} • {preview.platform}
-                  </div>
+                  <div style={{ color: "#9ca3af", marginTop: 4 }}>{preview.uploader} • {preview.platform}</div>
                 </div>
 
                 <div>
@@ -418,7 +524,10 @@ export default function AiTools() {
 
       <button
         onClick={handleGenerate}
-        disabled={isGenerating || (mode === "url" ? !preview || previewLoading : !file)}
+        disabled={
+          isGenerating ||
+          (mode === "prompt" ? false : mode === "url" ? (!preview || previewLoading) : !file)
+        }
         style={{
           width: "100%",
           padding: 12,
@@ -431,7 +540,7 @@ export default function AiTools() {
         }}
         aria-disabled={isGenerating}
       >
-        {isGenerating ? "Processing AI Variations…" : "Generate Copyright-Free Options"}
+        {isGenerating ? (mode === "prompt" ? "AI is Thinking (GPU)..." : "Processing AI Variations…") : mode === "prompt" ? "Generate Music from Prompt" : "Generate Copyright-Free Options"}
       </button>
 
       {results && results.length > 0 && (
@@ -452,7 +561,7 @@ export default function AiTools() {
                 }}
               >
                 <button
-                  onClick={() => togglePlay(r.stream_url)}
+                  onClick={() => togglePlay(r.stream_url, r.downloadable_blob)}
                   style={{
                     width: 48,
                     height: 48,
@@ -475,9 +584,10 @@ export default function AiTools() {
                   <div style={{ color: "#9ca3af", fontSize: 13 }}>{r.description}</div>
                 </div>
 
+                {/* Download link: for prompt results we already have an object URL; for backend results the server provides stream_url */}
                 <a
                   href={r.stream_url}
-                  download={`${r.title}.mp3`}
+                  download={`${(r.title || "ai_result").replace(/\s+/g, "_")}.mp3`}
                   style={{
                     padding: "8px 12px",
                     borderRadius: 8,
