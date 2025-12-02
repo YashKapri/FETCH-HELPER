@@ -1,4 +1,4 @@
-
+# Fetch Helper – Media Studio
 
 Media Studio is a full-stack application that combines a universal video downloader, an AI music generator, and an AI video enhancer. It lets users fetch, preview, and download media from major platforms (YouTube, Instagram, TikTok, etc.) and generate copyright-free music using URL input, file upload, or text prompts.
 
