@@ -1,60 +1,93 @@
-# Fetch Helper – Media Studio
+FETCH-HELPER 🚀
+AI Media Studio Backend Helper Tools — Free, Open-Source, and Powered by Google Colab T4 GPU
 
-Media Studio is a full-stack application that combines a universal video downloader, an AI music generator, and an AI video enhancer. It lets users fetch, preview, and download media from major platforms (YouTube, Instagram, TikTok, etc.) and generate copyright-free music using URL input, file upload, or text prompts.
+FETCH-HELPER is a lightweight toolset designed to support an AI Media Studio capable of:
 
----
+Text → Music Generation
 
-## Features
+Audio Remix from YouTube URL
 
-### 1. Video Downloader
-- Supports YouTube, TikTok, Instagram, Reddit, and more.
-- Extracts metadata, thumbnails, and available formats.
-- Downloads audio, video, or both.
-- Uses FastAPI + yt-dlp for fast and stable performance.
+Upload → AI Variation Generation
 
-### 2. AI Music Lab
-The AI Music Lab has three modes:
+AI Video Upscaling & Enhancement
 
-#### • Remix URL  
-Generate copyright-free music variations from any YouTube/SoundCloud link.
+This repo contains helper scripts, utilities, and workflows used to build the full pipeline — all running on free compute using Google Colab T4 GPU and Hugging Face Spaces.
 
-#### • Upload File  
-Upload an audio or video file and generate brand new AI variations.
+🔥 Features
+🎵 1. Text → Music
 
-#### • Text-to-Music  
-Describe music in natural language and the system generates a full track using AI.
+Generate music from prompts using MusicGen models available on Hugging Face Spaces.
 
-### 3. AI Video Enhancer
-- Upload low-quality footage and upscale it to 1080p or 4K.
-- Based on Real-ESRGAN (GPU-accelerated).
-- Backend supports forwarding requests to external GPU services like Colab.
+🎧 2. Remix from YouTube URL
 
-### 4. Modern Animated UI
-- Built with React + Vite.
-- Animated using Framer Motion.
-- Optional 3D elements powered by React Three Fiber.
-- Smooth transitions, modern dark theme, responsive layout.
+Download YouTube audio
 
----
+Process and clean the audio
 
-## Tech Stack
+Feed it into the generation pipeline to create AI variations
 
-### Frontend
-- React (Vite)
-- Framer Motion (animations)
-- React Three Fiber (optional 3D)
-- TailwindCSS / Custom CSS
-- React Icons
+🎙️ 3. Upload → AI Variation
 
-### Backend
-- FastAPI (Python)
-- yt-dlp
-- Real-ESRGAN (for video enhancement)
-- Custom audio pipelines
-- Optional remote GPU processing
+Users upload audio (voice, humming, music clips)
+→ system returns an AI-generated variation.
 
----
+🎥 4. AI Video Enhancer
 
-## API Endpoints
+Upscale and enhance videos using Real-ESRGAN and similar models.
 
-### Media Info
+⚡ Tech Stack
+Category	Tools
+Compute	Google Colab (T4 GPU)
+AI Models	MusicGen, Real-ESRGAN
+Model Hosting	Hugging Face Spaces
+Media Tools	yt-dlp, FFmpeg
+Backend Logic	Python (helper scripts)
+Frontend	HTML, CSS, JS
+Version Control	Git & GitHub
+📁 Project Structure
+FETCH-HELPER/
+│
+├── notebooks/
+│   └── colab_demo.ipynb       # Colab notebook for running the pipeline
+│
+├── helpers/
+│   ├── download.py            # yt-dlp utilities
+│   ├── audio_utils.py         # audio preprocessing tools
+│   ├── video_utils.py         # video enhancement helpers
+│   └── pipeline.py            # combined flow logic
+│
+├── README.md
+└── LICENSE
+
+🚀 How to Use (Simple Guide)
+1️⃣ Clone the repo
+git clone https://github.com/YashKapri/FETCH-HELPER.git
+cd FETCH-HELPER
+
+2️⃣ Open the Colab notebook
+
+Upload the notebook from notebooks/colab_demo.ipynb
+or open it directly in Google Colab.
+
+3️⃣ Use the Notebook to:
+
+Download audio/video
+
+Generate or remix music
+
+Enhance video outputs
+
+Save results to your Frontend/UI
+
+🧠 Why This Exists
+
+To show that AI media tools can be built entirely for free, with no servers or paid APIs — just smart use of Colab + open tools.
+
+⭐ Contribute
+
+Issues and PRs are welcome.
+If you extend this project or use it in your own frontend, let me know — I'd love to see it!
+
+📬 Connect
+
+Feel free to reach out via LinkedIn or GitHub Discussions.
